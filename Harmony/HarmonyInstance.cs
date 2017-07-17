@@ -157,6 +157,14 @@ namespace Harmony
 				.Any(info => info.Owners.Contains(harmonyID));
 		}
 
+		public void Restore(MethodBase original, HarmonyMethod prefix, HarmonyMethod postfix, HarmonyMethod transpiler = null)
+		{
+			var processor = new PatchProcessor(this, original, prefix, postfix, transpiler);
+			processor.Restore();
+		}
+
+		//
+
 		/// <summary>Gets patch information for a given original method</summary>
 		/// <param name="method">The original method</param>
 		/// <returns>The patch information</returns>

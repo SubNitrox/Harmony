@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Reflection.Emit;
+using System.Runtime.InteropServices;
 
 namespace Harmony
 {
@@ -118,13 +119,19 @@ namespace Harmony
 				.ToList();
 		}
 
-		/// <summary>Creates new dynamic method with the latest patches and detours the original method</summary>
-		/// <param name="original">The original method</param>
-		/// <param name="patchInfo">Information describing the patches</param>
-		/// <param name="instanceID">Harmony ID</param>
-		/// <returns>The newly created dynamic method</returns>
-		///
-		public static DynamicMethod UpdateWrapper(MethodBase original, PatchInfo patchInfo, string instanceID)
+        internal struct PatchHandle
+        {
+            public DynamicMethod PatchedMethod;
+            public byte[] OverwrittenCode;
+        }
+
+        /// <summary>Creates new dynamic method with the latest patches and detours the original method</summary>
+        /// <param name="original">The original method</param>
+        /// <param name="patchInfo">Information describing the patches</param>
+        /// <param name="instanceID">Harmony ID</param>
+        /// <returns>The newly created dynamic method</returns>
+        ///
+        public static DynamicMethod UpdateWrapper(MethodBase original, PatchInfo patchInfo, string instanceID)
 		{
 			var sortedPrefixes = GetSortedPatchMethods(original, patchInfo.prefixes);
 			var sortedPostfixes = GetSortedPatchMethods(original, patchInfo.postfixes);

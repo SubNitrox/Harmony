@@ -117,9 +117,7 @@ namespace Harmony
 		///
 		public void AddPrefix(MethodInfo patch, string owner, int priority, string[] before, string[] after)
 		{
-			var l = prefixes.ToList();
-			l.Add(new Patch(patch, prefixes.Count() + 1, owner, priority, before, after));
-			prefixes = l.ToArray();
+			AddPatch(patch, ref prefixes, owner, priority, before, after);
 		}
 
 		/// <summary>Removes a prefix</summary>
@@ -144,9 +142,7 @@ namespace Harmony
 		///
 		public void AddPostfix(MethodInfo patch, string owner, int priority, string[] before, string[] after)
 		{
-			var l = postfixes.ToList();
-			l.Add(new Patch(patch, postfixes.Count() + 1, owner, priority, before, after));
-			postfixes = l.ToArray();
+			AddPatch(patch, ref postfixes, owner, priority, before, after);
 		}
 
 		/// <summary>Removes a postfix</summary>
@@ -171,9 +167,36 @@ namespace Harmony
 		///
 		public void AddTranspiler(MethodInfo patch, string owner, int priority, string[] before, string[] after)
 		{
-			var l = transpilers.ToList();
-			l.Add(new Patch(patch, transpilers.Count() + 1, owner, priority, before, after));
-			transpilers = l.ToArray();
+			AddPatch(patch, ref transpilers, owner, priority, before, after);
+		}
+
+		private void AddPatch(MethodInfo patch, ref Patch[] patchlist, string owner, int priority, string[] before, string[] after)
+		{
+			var l = patchlist.ToList();
+			l.Add(new Patch(patch, (patchlist.LastOrDefault()?.index ?? 0) + 1, owner, priority, before, after));
+			patchlist = l.ToArray();
+		}
+
+		public void RemovePrefix(MethodInfo patch)
+		{
+			RemovePatch(patch, ref prefixes);
+		}
+
+		public void RemovePostfix(MethodInfo patch)
+		{
+			RemovePatch(patch, ref postfixes);
+		}
+
+		public void RemoveTranspiler(MethodInfo patch)
+		{
+			RemovePatch(patch, ref transpilers);
+		}
+
+		private void RemovePatch(MethodInfo patch, ref Patch[] patchlist)
+		{
+			var l = patchlist.ToList();
+			l.RemoveAll(p => p.patch == patch);
+			patchlist = l.ToArray();
 		}
 
 		/// <summary>Removes a transpiler</summary>

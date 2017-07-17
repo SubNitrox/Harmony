@@ -20,6 +20,16 @@ namespace Harmony
 			objectReferences[key] = value;
 		}
 
+		public static void ForgetObject(object key)
+		{
+			objectReferences.Remove(key);
+		}
+
+		public static bool RecallObject(object key, out object value)
+		{
+			return objectReferences.TryGetValue(key, out value);
+		}
+
 		/// <summary>Helper that returns a specific patch method</summary>
 		/// <typeparam name="T">The type (prefix, postfix or transpiler) of the patch</typeparam>
 		/// <param name="patchType">The class where the patch method is declared</param>
