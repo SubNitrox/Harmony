@@ -70,10 +70,17 @@ namespace Harmony
 			});
 		}
 
-		public void Patch(MethodBase original, HarmonyMethod prefix, HarmonyMethod postfix, HarmonyMethod transpiler = null)
+		public PatchProcessor Patch(MethodBase original, HarmonyMethod prefix, HarmonyMethod postfix, HarmonyMethod transpiler = null)
 		{
 			var processor = new PatchProcessor(this, original, prefix, postfix, transpiler);
 			processor.Patch();
+			return processor;
+		}
+
+		public void Restore(MethodBase original, HarmonyMethod prefix, HarmonyMethod postfix, HarmonyMethod transpiler = null)
+		{
+			var processor = new PatchProcessor(this, original, prefix, postfix, transpiler);
+			processor.Restore();
 		}
 
 		//
