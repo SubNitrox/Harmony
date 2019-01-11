@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -331,8 +331,9 @@ namespace Harmony.ILCopying
 				var code = codeInstruction.opcode;
 				var operand = codeInstruction.operand;
 
-				// replace RET with a jump to the end (outside this code)
-				if (code == OpCodes.Ret)
+
+                    // replace RET with a jump to the end (outside this code)
+                    if (code == OpCodes.Ret)
 				{
 					var endLabel = generator.DefineLabel();
 					code = OpCodes.Br;
@@ -357,6 +358,11 @@ namespace Harmony.ILCopying
 				//		if (instructions[idx + 1].blocks.Any(block => block.blockType != ExceptionBlockType.EndExceptionBlock))
 				//			emitCode = false;
 				//}
+
+                if (code.Name == OpCodes.Arglist.Name)
+                {
+                    emitCode = false;
+                }
 
 				if (emitCode)
 				{

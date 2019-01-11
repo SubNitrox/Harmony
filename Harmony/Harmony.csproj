@@ -45,14 +45,21 @@
 	</PropertyGroup>
 
 	<PropertyGroup Condition="'$(Configuration)|$(TargetFramework)|$(Platform)'=='Release|net35|AnyCPU'">
-		<OutputPath></OutputPath>
+		<OutputPath>bin\Release\</OutputPath>
 	</PropertyGroup>
 
 	<PropertyGroup Condition="'$(Configuration)|$(TargetFramework)|$(Platform)'=='Debug|net35|AnyCPU'">
+		<OutputPath>bin\Debug\</OutputPath>
 	</PropertyGroup>
 
 	<ProjectExtensions>
 		<VisualStudio><UserProperties /></VisualStudio>
 	</ProjectExtensions>
+	
+	<Target Name="GetTargetPath" Returns="@(_FakeOutputPath)">
+    <ItemGroup>
+      <_FakeOutputPath Include="$(SolutionDir)\$(PackageOutputPath)\$(AssemblyName).dll" />
+    </ItemGroup>
+  </Target>
 
 </Project>

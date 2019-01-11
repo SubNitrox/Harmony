@@ -204,15 +204,16 @@ namespace HarmonyTests
 			MethodInfo prefixMethod;
 			MethodInfo postfixMethod;
 			MethodInfo transpilerMethod;
-			PatchTools.GetPatches(typeof(Class2Patch), originalMethod, out prefixMethod, out postfixMethod, out transpilerMethod);
+			PatchTools.GetPatches(typeof(Class2Patch), out prefixMethod, out postfixMethod, out transpilerMethod);
 
 			var instance = HarmonyInstance.Create("test");
-			var patcher = new PatchProcessor(instance, originalMethod, new HarmonyMethod(prefixMethod), new HarmonyMethod(postfixMethod), null);
+			var patcher = new PatchProcessor(instance, new List<MethodBase>() { originalMethod }, new HarmonyMethod(prefixMethod), new HarmonyMethod(postfixMethod), null);
 
 			// Check if the class is clean before using it for patching
 			Assert.AreEqual(null, instance.IsPatched(originalMethod), "Class already patched!");
 
-			var start = Memory.GetMethodStart(originalMethod);
+			Exception ex;
+			var start = Memory.GetMethodStart(originalMethod, out ex);
 			var oldBytes = new byte[12];
 			if (IntPtr.Size == sizeof(long))
 			{
@@ -225,7 +226,7 @@ namespace HarmonyTests
 
 			patcher.Patch();
 
-			patcher.Restore();
+			patcher.Unpatch(originalMethod);
 
 			var newBytes = new byte[12];
 			if (IntPtr.Size == sizeof(long))

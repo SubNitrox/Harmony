@@ -47,11 +47,16 @@ namespace Harmony
 			}
 		}
 
-		/// <summary>Creates a new Harmony instance</summary>
-		/// <param name="id">A unique identifier</param>
-		/// <returns>A Harmony instance</returns>
-		///
-		public static HarmonyInstance Create(string id)
+	   public Patches IsPatched(MethodBase method)
+	   {
+		  return PatchProcessor.IsPatched(method);
+	   }
+
+	  /// <summary>Creates a new Harmony instance</summary>
+	  /// <param name="id">A unique identifier</param>
+	  /// <returns>A Harmony instance</returns>
+	  ///
+	  public static HarmonyInstance Create(string id)
 		{
 			if (id == null) throw new Exception("id cannot be null");
 			return new HarmonyInstance(id);
@@ -156,14 +161,6 @@ namespace Harmony
 				.Select(original => GetPatchInfo(original))
 				.Any(info => info.Owners.Contains(harmonyID));
 		}
-
-		public void Restore(MethodBase original, HarmonyMethod prefix, HarmonyMethod postfix, HarmonyMethod transpiler = null)
-		{
-			var processor = new PatchProcessor(this, original, prefix, postfix, transpiler);
-			processor.Restore();
-		}
-
-		//
 
 		/// <summary>Gets patch information for a given original method</summary>
 		/// <param name="method">The original method</param>

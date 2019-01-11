@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -67,10 +67,17 @@ namespace Harmony
 			}
 		}
 
-		/// <summary>Gets all patched original methods</summary>
-		/// <returns>All patched original methods</returns>
-		///
-		public static IEnumerable<MethodBase> AllPatchedMethods()
+	   public static Patches IsPatched(MethodBase method)
+	   {
+		  var patchInfo = HarmonySharedState.GetPatchInfo(method);
+		  if (patchInfo == null) return null;
+		  return new Patches(patchInfo.prefixes, patchInfo.postfixes, patchInfo.transpilers);
+	   }
+
+	  /// <summary>Gets all patched original methods</summary>
+	  /// <returns>All patched original methods</returns>
+	  ///
+	  public static IEnumerable<MethodBase> AllPatchedMethods()
 		{
 			lock (locker)
 			{
@@ -100,9 +107,10 @@ namespace Harmony
 						PatchFunctions.AddPrefix(patchInfo, instance.Id, prefix);
 						PatchFunctions.AddPostfix(patchInfo, instance.Id, postfix);
 						PatchFunctions.AddTranspiler(patchInfo, instance.Id, transpiler);
-						dynamicMethods.Add(PatchFunctions.UpdateWrapper(original, patchInfo, instance.Id));
+                        dynamicMethods.Add(PatchFunctions.UpdateWrapper(original, patchInfo, instance.Id));
+                        
 
-						HarmonySharedState.UpdatePatchInfo(original, patchInfo);
+                        HarmonySharedState.UpdatePatchInfo(original, patchInfo);
 
 						RunMethod<HarmonyCleanup>(original);
 					}

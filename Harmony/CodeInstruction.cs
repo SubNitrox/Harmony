@@ -1,4 +1,4 @@
-using Harmony.ILCopying;
+﻿using Harmony.ILCopying;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection.Emit;
@@ -78,15 +78,17 @@ namespace Harmony
 		public override string ToString()
 		{
 			var list = new List<string>();
-			foreach (var label in labels)
-				list.Add("Label" + label.GetHashCode());
-			foreach (var block in blocks)
+            foreach (var label in labels)
+            {
+                list.Add("Label" + label.GetHashCode());
+            }
+            foreach (var block in blocks)
 				list.Add("EX_" + block.blockType.ToString().Replace("Block", ""));
 
-			var extras = list.Count > 0 ? " [" + string.Join(", ", list.ToArray()) + "]" : "";
+            var extras = list.Count > 0 ? " [" + string.Join(", ", list.ToArray()) + "]" : "";
 			var operandStr = Emitter.FormatArgument(operand);
 			if (operandStr != "") operandStr = " " + operandStr;
 			return opcode + operandStr + extras;
-		}
+        }
 	}
 }
