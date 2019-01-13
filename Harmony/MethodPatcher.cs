@@ -1,4 +1,4 @@
-﻿using Harmony.ILCopying;
+using Harmony.ILCopying;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -7,71 +7,154 @@ using System.Reflection.Emit;
 
 namespace Harmony
 {
+	/// <summary>A method patch helper</summary>
 	public static class MethodPatcher
 	{
-		// special parameter names that can be used in prefix and postfix methods
-		//
-		public static string INSTANCE_PARAM = "__instance";
-		public static string RESULT_VAR = "__result";
-		public static string STATE_VAR = "__state";
+		/// special parameter names that can be used in prefix and postfix methods
 
+		/// <summary>Instance parameter name</summary>
+		public static string INSTANCE_PARAM = "__instance";
+		/// <summary>Original method parameter name</summary>
+		public static string ORIGINAL_METHOD_PARAM = "__originalMethod";
+		/// <summary>Result variable name</summary>
+		public static string RESULT_VAR = "__result";
+		/// <summary>State variable name</summary>
+		public static string STATE_VAR = "__state";
+		/// <summary>Parameter index prefix</summary>
+		public static string PARAM_INDEX_PREFIX = "__";
+		/// <summary>Instance field prefix</summary>
+		public static string INSTANCE_FIELD_PREFIX = "___";
+
+		// in case of trouble, set to true to write dynamic method to desktop as a dll
+		// won't work for all methods because of the inability to extend a type compared
+		// to the way DynamicTools.CreateDynamicMethod works
+		//
+		static readonly bool DEBUG_METHOD_GENERATION_BY_DLL_CREATION = false;
+
+		/// <summary>Creates patched method</summary>
+		/// <param name="original">The original method</param>
+		/// <param name="prefixes">The prefix methods</param>
+		/// <param name="postfixes">The postfix methods</param>
+		/// <param name="transpilers">The transpiler methods</param>
+		/// <returns>A new dynamic method</returns>
+		///
+		[UpgradeToLatestVersion(1)]
 		public static DynamicMethod CreatePatchedMethod(MethodBase original, List<MethodInfo> prefixes, List<MethodInfo> postfixes, List<MethodInfo> transpilers)
 		{
-			if (HarmonyInstance.DEBUG) FileLog.Log("PATCHING " + original.DeclaringType + " " + original);
+			return CreatePatchedMethod(original, "HARMONY_PATCH_1.1.1", prefixes, postfixes, transpilers);
+		}
 
-			var idx = prefixes.Count() + postfixes.Count();
-			var patch = DynamicTools.CreateDynamicMethod(original, "_Patch" + idx);
-			var il = patch.GetILGenerator();
+		/// <summary>Creates patched method.</summary>
+		/// <exception cref="ArgumentNullException">Thrown when one or more required arguments are null.</exception>
+		/// <exception cref="Exception">				  Thrown when an exception error condition occurs.</exception>
+		/// <param name="original">			The original method.</param>
+		/// <param name="harmonyInstanceID">Identifier for the harmony instance.</param>
+		/// <param name="prefixes">			The prefix methods.</param>
+		/// <param name="postfixes">			The postfix methods.</param>
+		/// <param name="transpilers">		The transpiler methods.</param>
+		/// <returns>A new dynamic method.</returns>
+		///
+		public static DynamicMethod CreatePatchedMethod(MethodBase original, string harmonyInstanceID, List<MethodInfo> prefixes, List<MethodInfo> postfixes, List<MethodInfo> transpilers)
+		{
+			if (original == null)
+				throw new ArgumentNullException(nameof(original), "Original method is null. Did you specify it correctly?");
 
-			var originalVariables = DynamicTools.DeclareLocalVariables(original, il);
-			var privateVars = new Dictionary<string, LocalBuilder>();
-
-			LocalBuilder resultVariable = null;
-			if (idx > 0)
+			try
 			{
-				resultVariable = DynamicTools.DeclareLocalVariable(il, AccessTools.GetReturnedType(original));
-				privateVars[RESULT_VAR] = resultVariable;
+				if (HarmonyInstance.DEBUG) FileLog.LogBuffered("### Patch " + original.DeclaringType + ", " + original);
+
+				var idx = prefixes.Count() + postfixes.Count();
+				var patch = DynamicTools.CreateDynamicMethod(original, "_Patch" + idx);
+				if (patch == null)
+					return null;
+
+				var il = patch.GetILGenerator();
+
+				// for debugging
+				AssemblyBuilder assemblyBuilder = null;
+				TypeBuilder typeBuilder = null;
+				if (DEBUG_METHOD_GENERATION_BY_DLL_CREATION)
+					il = DynamicTools.CreateSaveableMethod(original, "_Patch" + idx, out assemblyBuilder, out typeBuilder);
+
+				var originalVariables = DynamicTools.DeclareLocalVariables(original, il);
+				var privateVars = new Dictionary<string, LocalBuilder>();
+
+				LocalBuilder resultVariable = null;
+				if (idx > 0)
+				{
+					resultVariable = DynamicTools.DeclareLocalVariable(il, AccessTools.GetReturnedType(original));
+					privateVars[RESULT_VAR] = resultVariable;
+				}
+
+				prefixes.ForEach(prefix =>
+				{
+					prefix.GetParameters()
+						.Where(patchParam => patchParam.Name == STATE_VAR)
+						.Do(patchParam =>
+						{
+							var privateStateVariable = DynamicTools.DeclareLocalVariable(il, patchParam.ParameterType);
+							privateVars[prefix.DeclaringType.FullName] = privateStateVariable;
+						});
+				});
+
+				var skipOriginalLabel = il.DefineLabel();
+				var canHaveJump = AddPrefixes(il, original, prefixes, privateVars, skipOriginalLabel);
+
+				var copier = new MethodCopier(original, il, originalVariables);
+				foreach (var transpiler in transpilers)
+					copier.AddTranspiler(transpiler);
+
+				var endLabels = new List<Label>();
+				var endBlocks = new List<ExceptionBlock>();
+				copier.Finalize(endLabels, endBlocks);
+
+				foreach (var label in endLabels)
+					Emitter.MarkLabel(il, label);
+				foreach (var block in endBlocks)
+					Emitter.MarkBlockAfter(il, block);
+				if (resultVariable != null)
+					Emitter.Emit(il, OpCodes.Stloc, resultVariable);
+				if (canHaveJump)
+					Emitter.MarkLabel(il, skipOriginalLabel);
+
+				AddPostfixes(il, original, postfixes, privateVars, false);
+
+				if (resultVariable != null)
+					Emitter.Emit(il, OpCodes.Ldloc, resultVariable);
+
+				AddPostfixes(il, original, postfixes, privateVars, true);
+
+				Emitter.Emit(il, OpCodes.Ret);
+
+				if (HarmonyInstance.DEBUG)
+				{
+					FileLog.LogBuffered("DONE");
+					FileLog.LogBuffered("");
+					FileLog.FlushBuffer();
+				}
+
+				// for debugging
+				if (DEBUG_METHOD_GENERATION_BY_DLL_CREATION)
+				{
+					DynamicTools.SaveMethod(assemblyBuilder, typeBuilder);
+					return null;
+				}
+
+				DynamicTools.PrepareDynamicMethod(patch);
+				return patch;
 			}
-
-			prefixes.ForEach(prefix =>
+			catch (Exception ex)
 			{
-				prefix.GetParameters()
-					.Where(patchParam => patchParam.Name == STATE_VAR)
-					.Do(patchParam =>
-					{
-						var privateStateVariable = DynamicTools.DeclareLocalVariable(il, patchParam.ParameterType);
-						privateVars[prefix.DeclaringType.FullName] = privateStateVariable;
-					});
-			});
-
-			var afterOriginal1 = il.DefineLabel();
-			var afterOriginal2 = il.DefineLabel();
-			var canHaveJump = AddPrefixes(il, original, prefixes, privateVars, afterOriginal2);
-
-			var copier = new MethodCopier(original, patch, originalVariables);
-			foreach (var transpiler in transpilers)
-				copier.AddTranspiler(transpiler);
-			copier.Emit(afterOriginal1);
-			Emitter.MarkLabel(il, afterOriginal1);
-			if (resultVariable != null)
-				Emitter.Emit(il, OpCodes.Stloc, resultVariable);
-			if (canHaveJump)
-				Emitter.MarkLabel(il, afterOriginal2);
-
-			AddPostfixes(il, original, postfixes, privateVars);
-
-			if (resultVariable != null)
-				Emitter.Emit(il, OpCodes.Ldloc, resultVariable);
-			Emitter.Emit(il, OpCodes.Ret);
-
-			if (HarmonyInstance.DEBUG)
-			{
-				FileLog.Log("DONE");
-				FileLog.Log("");
+				var exceptionString = "Exception from HarmonyInstance \"" + harmonyInstanceID + "\" patching " + original.FullDescription();
+				if (HarmonyInstance.DEBUG)
+					FileLog.Log("Exception: " + exceptionString);
+				throw new Exception(exceptionString, ex);
 			}
-
-			DynamicTools.PrepareDynamicMethod(patch);
-			return patch;
+			finally
+			{
+				if (HarmonyInstance.DEBUG)
+					FileLog.FlushBuffer();
+			}
 		}
 
 		static OpCode LoadIndOpCodeFor(Type type)
@@ -94,20 +177,166 @@ namespace Harmony
 			return OpCodes.Ldind_Ref;
 		}
 
-		static void EmitCallParameter(ILGenerator il, MethodBase original, MethodInfo patch, Dictionary<string, LocalBuilder> variables)
+		static HarmonyArgument GetArgumentAttribute(this ParameterInfo parameter)
+		{
+			return parameter.GetCustomAttributes(false).FirstOrDefault(attr => attr is HarmonyArgument) as HarmonyArgument;
+		}
+
+		static HarmonyArgument[] GetArgumentAttributes(this MethodInfo method)
+		{
+			return method.GetCustomAttributes(false).Where(attr => attr is HarmonyArgument).Cast<HarmonyArgument>().ToArray();
+		}
+
+		static HarmonyArgument[] GetArgumentAttributes(this Type type)
+		{
+			return type.GetCustomAttributes(false).Where(attr => attr is HarmonyArgument).Cast<HarmonyArgument>().ToArray();
+		}
+
+		static string GetOriginalArgumentName(this ParameterInfo parameter, string[] originalParameterNames)
+		{
+			var attribute = parameter.GetArgumentAttribute();
+			if (attribute == null)
+				return null;
+
+			if (string.IsNullOrEmpty(attribute.OriginalName) == false)
+				return attribute.OriginalName;
+
+			if (attribute.Index >= 0 && attribute.Index < originalParameterNames.Length)
+				return originalParameterNames[attribute.Index];
+
+			return null;
+		}
+
+		static string GetOriginalArgumentName(HarmonyArgument[] attributes, string name, string[] originalParameterNames)
+		{
+			if (attributes.Length <= 0)
+				return null;
+
+			var attribute = attributes.SingleOrDefault(p => p.NewName == name);
+			if (attribute == null)
+				return null;
+
+			if (string.IsNullOrEmpty(attribute.OriginalName) == false)
+				return attribute.OriginalName;
+
+			if (attribute.Index >= 0 && attribute.Index < originalParameterNames.Length)
+				return originalParameterNames[attribute.Index];
+
+			return null;
+		}
+
+		static string GetOriginalArgumentName(this MethodInfo method, string[] originalParameterNames, string name)
+		{
+			string argumentName;
+
+			argumentName = GetOriginalArgumentName(method.GetArgumentAttributes(), name, originalParameterNames);
+			if (argumentName != null)
+				return argumentName;
+
+			argumentName = GetOriginalArgumentName(method.DeclaringType.GetArgumentAttributes(), name, originalParameterNames);
+			if (argumentName != null)
+				return argumentName;
+
+			return name;
+		}
+
+		private static int GetArgumentIndex(MethodInfo patch, string[] originalParameterNames, ParameterInfo patchParam)
+		{
+			var originalName = patchParam.GetOriginalArgumentName(originalParameterNames);
+			if (originalName != null)
+				return Array.IndexOf(originalParameterNames, originalName);
+
+			var patchParamName = patchParam.Name;
+			originalName = patch.GetOriginalArgumentName(originalParameterNames, patchParamName);
+			if (originalName != null)
+				return Array.IndexOf(originalParameterNames, originalName);
+
+			return -1;
+		}
+
+		static readonly MethodInfo getMethodMethod = typeof(MethodBase).GetMethod("GetMethodFromHandle", new[] { typeof(RuntimeMethodHandle) });
+
+		static void EmitCallParameter(ILGenerator il, MethodBase original, MethodInfo patch, Dictionary<string, LocalBuilder> variables, bool allowFirsParamPassthrough)
 		{
 			var isInstance = original.IsStatic == false;
 			var originalParameters = original.GetParameters();
 			var originalParameterNames = originalParameters.Select(p => p.Name).ToArray();
-			foreach (var patchParam in patch.GetParameters())
+
+			// check for passthrough using first parameter (which must have same type as return type)
+			var parameters = patch.GetParameters().ToList();
+			if (allowFirsParamPassthrough && patch.ReturnType != typeof(void) && parameters.Count > 0 && parameters[0].ParameterType == patch.ReturnType)
+				parameters.RemoveRange(0, 1);
+
+			foreach (var patchParam in parameters)
 			{
+				if (patchParam.Name == ORIGINAL_METHOD_PARAM)
+				{
+					var constructorInfo = original as ConstructorInfo;
+					if (constructorInfo != null)
+					{
+						Emitter.Emit(il, OpCodes.Ldtoken, constructorInfo);
+						Emitter.Emit(il, OpCodes.Call, getMethodMethod);
+						continue;
+					}
+					var methodInfo = original as MethodInfo;
+					if (methodInfo != null)
+					{
+						Emitter.Emit(il, OpCodes.Ldtoken, methodInfo);
+						Emitter.Emit(il, OpCodes.Call, getMethodMethod);
+						continue;
+					}
+					Emitter.Emit(il, OpCodes.Ldnull);
+					continue;
+				}
+
 				if (patchParam.Name == INSTANCE_PARAM)
 				{
-					if (!isInstance) throw new Exception("Cannot get instance from static method " + original);
-					if (patchParam.ParameterType.IsByRef)
+					if (original.IsStatic)
+						Emitter.Emit(il, OpCodes.Ldnull);
+					else if (patchParam.ParameterType.IsByRef)
 						Emitter.Emit(il, OpCodes.Ldarga, 0); // probably won't work or will be useless
 					else
 						Emitter.Emit(il, OpCodes.Ldarg_0);
+					continue;
+				}
+
+				if (patchParam.Name.StartsWith(INSTANCE_FIELD_PREFIX))
+				{
+					var fieldName = patchParam.Name.Substring(INSTANCE_FIELD_PREFIX.Length);
+					FieldInfo fieldInfo;
+					if (fieldName.All(char.IsDigit))
+					{
+						fieldInfo = AccessTools.DeclaredField(original.DeclaringType, int.Parse(fieldName));
+						if (fieldInfo == null)
+							throw new ArgumentException("No field found at given index in class " + original.DeclaringType.FullName, fieldName);
+					}
+					else
+					{
+						fieldInfo = AccessTools.DeclaredField(original.DeclaringType, fieldName);
+						if (fieldInfo == null)
+							throw new ArgumentException("No such field defined in class " + original.DeclaringType.FullName, fieldName);
+					}
+
+					if (fieldInfo.IsStatic)
+					{
+						if (patchParam.ParameterType.IsByRef)
+							Emitter.Emit(il, OpCodes.Ldsflda, fieldInfo);
+						else
+							Emitter.Emit(il, OpCodes.Ldsfld, fieldInfo);
+					}
+					else
+					{
+						if (patchParam.ParameterType.IsByRef)
+						{
+							Emitter.Emit(il, OpCodes.Ldarg_0);
+							Emitter.Emit(il, OpCodes.Ldflda, fieldInfo);
+						}
+						else
+						{
+							Emitter.Emit(il, OpCodes.Ldarg_0);
+							Emitter.Emit(il, OpCodes.Ldfld, fieldInfo);
+						}
+					}
 					continue;
 				}
 
@@ -121,14 +350,26 @@ namespace Harmony
 				if (patchParam.Name == RESULT_VAR)
 				{
 					if (AccessTools.GetReturnedType(original) == typeof(void))
-						throw new Exception("Cannot get result from void method " + original);
+						throw new Exception("Cannot get result from void method " + original.FullDescription());
 					var ldlocCode = patchParam.ParameterType.IsByRef ? OpCodes.Ldloca : OpCodes.Ldloc;
 					Emitter.Emit(il, ldlocCode, variables[RESULT_VAR]);
 					continue;
 				}
 
-				var idx = Array.IndexOf(originalParameterNames, patchParam.Name);
-				if (idx == -1) throw new Exception("Parameter \"" + patchParam.Name + "\" not found in method " + original);
+				int idx;
+				if (patchParam.Name.StartsWith(PARAM_INDEX_PREFIX))
+				{
+					var val = patchParam.Name.Substring(PARAM_INDEX_PREFIX.Length);
+					if (!int.TryParse(val, out idx))
+						throw new Exception("Parameter " + patchParam.Name + " does not contain a valid index");
+					if (idx < 0 || idx >= originalParameters.Length)
+						throw new Exception("No parameter found at index " + idx);
+				}
+				else
+				{
+					idx = GetArgumentIndex(patch, originalParameterNames, patchParam);
+					if (idx == -1) throw new Exception("Parameter \"" + patchParam.Name + "\" not found in method " + original.FullDescription());
+				}
 
 				//   original -> patch     opcode
 				// --------------------------------------
@@ -166,8 +407,9 @@ namespace Harmony
 			var canHaveJump = false;
 			prefixes.ForEach(fix =>
 			{
-				EmitCallParameter(il, original, fix, variables);
+				EmitCallParameter(il, original, fix, variables, false);
 				Emitter.Emit(il, OpCodes.Call, fix);
+
 				if (fix.ReturnType != typeof(void))
 				{
 					if (fix.ReturnType != typeof(bool))
@@ -179,15 +421,28 @@ namespace Harmony
 			return canHaveJump;
 		}
 
-		static void AddPostfixes(ILGenerator il, MethodBase original, List<MethodInfo> postfixes, Dictionary<string, LocalBuilder> variables)
+		static void AddPostfixes(ILGenerator il, MethodBase original, List<MethodInfo> postfixes, Dictionary<string, LocalBuilder> variables, bool passthroughPatches)
 		{
-			postfixes.ForEach(fix =>
-			{
-				EmitCallParameter(il, original, fix, variables);
-				Emitter.Emit(il, OpCodes.Call, fix);
-				if (fix.ReturnType != typeof(void))
-					throw new Exception("Postfix patch " + fix + " has not \"void\" return type: " + fix.ReturnType);
-			});
+			postfixes
+				.Where(fix => passthroughPatches == (fix.ReturnType != typeof(void)))
+				.Do(fix =>
+				{
+					EmitCallParameter(il, original, fix, variables, true);
+					Emitter.Emit(il, OpCodes.Call, fix);
+
+					if (fix.ReturnType != typeof(void))
+					{
+						var firstFixParam = fix.GetParameters().FirstOrDefault();
+						var hasPassThroughResultParam = firstFixParam != null && fix.ReturnType == firstFixParam.ParameterType;
+						if (!hasPassThroughResultParam)
+						{
+							if (firstFixParam != null)
+								throw new Exception("Return type of postfix patch " + fix + " does match type of its first parameter");
+
+							throw new Exception("Postfix patch " + fix + " must have a \"void\" return type");
+						}
+					}
+				});
 		}
 	}
 }

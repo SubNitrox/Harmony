@@ -6,15 +6,30 @@ namespace Harmony
 {
 	// Based on https://www.codeproject.com/Articles/14593/A-General-Fast-Method-Invoker
 
-	public delegate object FastInvokeHandler(object target, object[] paramters);
+	/// <summary>A delegate to invoke a method</summary>
+	/// <param name="target">The instance</param>
+	/// <param name="parameters">The method parameters</param>
+	/// <returns>The method result</returns>
+	///
+	public delegate object FastInvokeHandler(object target, object[] parameters);
 
+	/// <summary>A helper class to invoke method with delegates</summary>
 	public class MethodInvoker
 	{
+		/// <summary>Creates a fast invocation handler from a method and a module</summary>
+		/// <param name="methodInfo">The method to invoke</param>
+		/// <param name="module">The module context</param>
+		/// <returns>The fast invocation handler</returns>
+		///
 		public static FastInvokeHandler GetHandler(DynamicMethod methodInfo, Module module)
 		{
 			return Handler(methodInfo, module);
 		}
 
+		/// <summary>Creates a fast invocation handler from a method and a module</summary>
+		/// <param name="methodInfo">The method to invoke</param>
+		/// <returns>The fast invocation handler</returns>
+		///
 		public static FastInvokeHandler GetHandler(MethodInfo methodInfo)
 		{
 			return Handler(methodInfo, methodInfo.DeclaringType.Module);
@@ -22,12 +37,8 @@ namespace Harmony
 
 		static FastInvokeHandler Handler(MethodInfo methodInfo, Module module, bool directBoxValueAccess = false)
 		{
-			var dynamicMethod = new DynamicMethod("FastInvoke_" + methodInfo.Name + "_" + (directBoxValueAccess ? "direct" : "indirect"), typeof(object), new Type[] { typeof(object), typeof(object[]) }, module);
+			var dynamicMethod = new DynamicMethod("FastInvoke_" + methodInfo.Name + "_" + (directBoxValueAccess ? "direct" : "indirect"), typeof(object), new Type[] { typeof(object), typeof(object[]) }, module, true);
 			var il = dynamicMethod.GetILGenerator();
-
-			bool generateLocalBoxValuePtr = true;
-
-			var ps = methodInfo.GetParameters();
 
 			if (!methodInfo.IsStatic)
 			{
@@ -35,17 +46,19 @@ namespace Harmony
 				EmitUnboxIfNeeded(il, methodInfo.DeclaringType);
 			}
 
-			for (int i = 0; i < ps.Length; i++)
+			var generateLocalBoxValuePtr = true;
+			var ps = methodInfo.GetParameters();
+			for (var i = 0; i < ps.Length; i++)
 			{
-				Type argType = ps[i].ParameterType;
-				bool argIsByRef = argType.IsByRef;
+				var argType = ps[i].ParameterType;
+				var argIsByRef = argType.IsByRef;
 				if (argIsByRef)
 					argType = argType.GetElementType();
-				bool argIsValueType = argType.IsValueType;
+				var argIsValueType = argType.IsValueType;
 
 				if (argIsByRef && argIsValueType && !directBoxValueAccess)
 				{
-					// Used later when storing back the reference to the new box in the array.
+					// used later when storing back the reference to the new box in the array.
 					il.Emit(OpCodes.Ldarg_1);
 					EmitFastInt(il, i);
 				}

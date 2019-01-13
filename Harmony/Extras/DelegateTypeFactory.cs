@@ -1,14 +1,17 @@
-﻿using System;
+using System;
 using System.Reflection;
 using System.Reflection.Emit;
 
 namespace Harmony
 {
-	class DelegateTypeFactory
+	/// <summary>A factory to create delegate types</summary>
+	public class DelegateTypeFactory
 	{
 		readonly ModuleBuilder module;
 
 		static int counter;
+
+		/// <summary>Default constructor</summary>
 		public DelegateTypeFactory()
 		{
 			counter++;
@@ -17,6 +20,10 @@ namespace Harmony
 			module = assembly.DefineDynamicModule("HarmonyDTFModule" + counter);
 		}
 
+		/// <summary>Creates a delegate type for a method</summary>
+		/// <param name="method">The method</param>
+		/// <returns>The new delegate type</returns>
+		///
 		public Type CreateDelegateType(MethodInfo method)
 		{
 			var attr = TypeAttributes.Sealed | TypeAttributes.Public;
@@ -34,7 +41,7 @@ namespace Harmony
 				 method.ReturnType, parameters.Types());
 			invokeMethod.SetImplementationFlags(MethodImplAttributes.CodeTypeMask);
 
-			for (int i = 0; i < parameters.Length; i++)
+			for (var i = 0; i < parameters.Length; i++)
 				invokeMethod.DefineParameter(i + 1, ParameterAttributes.None, parameters[i].Name);
 
 			return typeBuilder.CreateType();

@@ -1,19 +1,18 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 
 namespace HarmonyTests.Assets
 {
 	public class TraverseTypes<T> where T : new()
 	{
 #pragma warning disable CS0414
-		int IntField;
-		string StringField;
+		readonly int IntField;
+		readonly string StringField;
 #pragma warning restore CS0414
-		Type TypeField;
-		IEnumerable<bool> ListOfBoolField;
-		Dictionary<T, List<string>> MixedField;
+		readonly Type TypeField;
+		readonly IEnumerable<bool> ListOfBoolField;
+		readonly Dictionary<T, List<string>> MixedField;
 
 		public T key;
 
@@ -25,8 +24,7 @@ namespace HarmonyTests.Assets
 			ListOfBoolField = (new bool[] { false, true }).Select(b => !b);
 
 			var d = new Dictionary<T, List<string>>();
-			var l = new List<string>();
-			l.Add("world");
+			var l = new List<string> { "world" };
 			key = new T();
 			d.Add(key, l);
 			MixedField = d;
@@ -40,7 +38,7 @@ namespace HarmonyTests.Assets
 			private class InnerClass2
 			{
 #pragma warning disable CS0414
-				private string field;
+				private readonly string field;
 #pragma warning restore CS0414
 
 				public InnerClass2()
@@ -49,7 +47,7 @@ namespace HarmonyTests.Assets
 				}
 			}
 
-			private InnerClass2 inner2;
+			private readonly InnerClass2 inner2;
 
 			public InnerClass1()
 			{
@@ -62,7 +60,7 @@ namespace HarmonyTests.Assets
 			private class InnerStaticFieldClass2
 			{
 #pragma warning disable CS0414
-				private static string field = "helloStatic";
+				private static readonly string field = "helloStatic";
 #pragma warning restore CS0414
 			}
 
@@ -82,7 +80,7 @@ namespace HarmonyTests.Assets
 			}
 		}
 
-		private InnerClass1 innerInstance;
+		private readonly InnerClass1 innerInstance;
 		private static InnerStaticFieldClass1 innerStatic;
 
 		public TraverseNestedTypes(string staticValue)
