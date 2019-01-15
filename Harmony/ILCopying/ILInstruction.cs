@@ -74,7 +74,17 @@ namespace Harmony.ILCopying
 		///
 		public CodeInstruction GetCodeInstruction()
 		{
-			var instr = new CodeInstruction(opcode, argument);
+		   CodeInstruction instr;
+
+			if(argument == null)
+		   {
+				instr = new CodeInstruction(opcode);
+			}
+			else
+		   {
+			  instr = new CodeInstruction(opcode, argument);
+		   }
+
 			if (opcode.OperandType == OperandType.InlineNone)
 				instr.operand = null;
 			instr.labels = labels;
