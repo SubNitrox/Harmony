@@ -1,4 +1,5 @@
-﻿using Harmony.ILCopying;
+using Harmony.ILCopying;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection.Emit;
@@ -17,20 +18,30 @@ namespace Harmony
 		/// <summary>All exception block boundaries defined on this instruction</summary>
 		public List<ExceptionBlock> blocks = new List<ExceptionBlock>();
 
-		/// <summary>Creates a new CodeInstruction with a given opcode and optional operand</summary>
-		/// <param name="opcode">The code</param>
-		/// <param name="operand">The operand</param>
-		///
-		public CodeInstruction(OpCode opcode, object operand = null)
-		{
-			this.opcode = opcode;
-			this.operand = operand;
-		}
+	  public CodeInstruction(OpCode opcode)
+	  {
+		 this.opcode = opcode;
+	  }
 
-		/// <summary>Create a full copy (including labels and exception blocks) of a CodeInstruction</summary>
-		/// <param name="instruction">The instruction to copy</param>
-		///
-		public CodeInstruction(CodeInstruction instruction)
+	  /// <summary>Creates a new CodeInstruction with a given opcode and optional operand</summary>
+	  /// <param name="opcode">The code</param>
+	  /// <param name="operand">The operand</param>
+	  ///
+	  public CodeInstruction(OpCode opcode, object operand)
+	  {
+		 if (operand == null)
+		 {
+				throw new Exception("Operand can not be null");
+		 }
+
+		 this.opcode = opcode;
+		 this.operand = operand;
+	  }
+
+	  /// <summary>Create a full copy (including labels and exception blocks) of a CodeInstruction</summary>
+	  /// <param name="instruction">The instruction to copy</param>
+	  ///
+	  public CodeInstruction(CodeInstruction instruction)
 		{
 			opcode = instruction.opcode;
 			operand = instruction.operand;
